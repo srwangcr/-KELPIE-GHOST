@@ -46,7 +46,7 @@ scapy
 
 ## 💻 Uso
 
-Ejecuta el script con `sudo`. Por defecto abre un menú interactivo para elegir modo, interfaz de red e IP objetivo.
+Ejecuta el script con `sudo`. Por defecto abre un menú interactivo para elegir idioma (Español/English), modo, interfaz de red e IP/dominio objetivo.
 
 ### Modo Clásico (Múltiples Interfaces Simultáneas)
 
@@ -66,11 +66,18 @@ sudo python3 kelpie-ghost.py
   * `-c`, `--count`: El número de pings a enviar a cada objetivo. El valor por defecto es `3`.
   * `--mode`: Ejecuta sin menú (`classic` o `cycles`).
   * `--host-interface`: Interfaz de red principal del host (requerida cuando se usa `--mode`).
+  * `--lang`: Idioma de salida (`es` o `en`). Si no se especifica, se pide al iniciar.
 
 **Ejemplo:** Escanear `google.com` y `wikipedia.org` con 5 interfaces, enviando 5 pings a cada uno.
 
 ```bash
 sudo python3 kelpie-ghost.py --mode classic --host-interface wlan0 -t 8.8.8.8 -i 5 -c 5
+```
+
+**Ejemplo en inglés:**
+
+```bash
+sudo python3 kelpie-ghost.py --lang en --mode classic --host-interface wlan0 -t google.com -i 3 -c 3
 ```
 
 -----
