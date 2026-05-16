@@ -46,7 +46,7 @@ scapy
 
 ## 💻 Uso
 
-Ejecuta el script con `sudo` y los argumentos de línea de comandos correspondientes.
+Ejecuta el script con `sudo`. Por defecto abre un menú interactivo para elegir modo, interfaz de red e IP objetivo.
 
 ### Modo Clásico (Múltiples Interfaces Simultáneas)
 
@@ -54,21 +54,23 @@ Este modo es ideal para escanear varios objetivos desde diferentes interfaces al
 
 #### Uso Básico
 
-Escanea `8.8.8.8` con 2 interfaces virtuales, enviando 3 pings a cada una.
+Abre el menú y configura el escaneo paso a paso.
 ```bash
 sudo python3 kelpie-ghost.py
 ````
 
 #### Opciones de Línea de Comandos
 
-  * `-t`, `--targets`: Especifica uno o más objetivos de escaneo (direcciones IP o dominios). El valor por defecto es `8.8.8.8`.
+  * `-t`, `--targets`: Especifica uno o más objetivos de escaneo (direcciones IP o dominios).
   * `-i`, `--interfaces`: El número de interfaces virtuales a crear. El valor por defecto es `2`.
   * `-c`, `--count`: El número de pings a enviar a cada objetivo. El valor por defecto es `3`.
+  * `--mode`: Ejecuta sin menú (`classic` o `cycles`).
+  * `--host-interface`: Interfaz de red principal del host (requerida cuando se usa `--mode`).
 
 **Ejemplo:** Escanear `google.com` y `wikipedia.org` con 5 interfaces, enviando 5 pings a cada uno.
 
 ```bash
-sudo python3 kelpie-ghost.py -t google.com wikipedia.org -i 5 -c 5
+sudo python3 kelpie-ghost.py --mode classic --host-interface wlan0 -t 8.8.8.8 -i 5 -c 5
 ```
 
 -----
@@ -82,12 +84,12 @@ Este modo crea una interfaz nueva en cada ciclo de ejecución, la usa y luego la
 Ejecuta 3 ciclos, cada uno con una interfaz diferente, escaneando `8.8.8.8`.
 
 ```bash
-sudo python3 kelpie-ghost.py --cycles 3
+sudo python3 kelpie-ghost.py --mode cycles --host-interface wlan0 -t 8.8.8.8 --cycles 3
 ```
 
 #### Modo Interactivo
 
-Inicia un modo interactivo donde puedes configurar los parámetros del escaneo paso a paso.
+También puedes forzar el menú interactivo con la bandera `--interactive`.
 
 ```bash
 sudo python3 kelpie-ghost.py --interactive

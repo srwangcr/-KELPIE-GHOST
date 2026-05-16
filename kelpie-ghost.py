@@ -22,6 +22,7 @@ class VirtualNetworkTool:
     def __init__(self):
         self.virtual_interfaces = []
         self.results = []
+        self.host_main_interface = None
         
     def check_privileges(self):
         """Verificar si se ejecuta como root"""
@@ -37,6 +38,78 @@ class VirtualNetworkTool:
                random.randint(0x00, 0xff),
                random.randint(0x00, 0xff)]
         return ':'.join(map(lambda x: "%02x" % x, mac))
+
+    def get_available_interfaces(self):
+        """Obtener interfaces de red físicas/activas del sistema"""
+        try:
+            result = subprocess.run(
+                ["ip", "-o", "link", "show"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            interfaces = []
+            for line in result.stdout.splitlines():
+                parts = line.split(":", 2)
+                if len(parts) < 2:
+                    continue
+                iface = parts[1].strip()
+                if iface == "lo" or iface.startswith("veth"):
+                    continue
+                interfaces.append(iface)
+            return interfaces
+        except Exception:
+            return []
+
+    def pick_host_interface(self):
+        """Permitir al usuario seleccionar la interfaz principal"""
+        interfaces = self.get_available_interfaces()
+        if not interfaces:
+            print("❌ No se pudieron detectar interfaces de red disponibles")
+            return None
+
+        print("\n🌐 Selecciona la interfaz de red a usar:")
+        for idx, iface in enumerate(interfaces, 1):
+            print(f"   {idx}. {iface}")
+
+        while True:
+            choice = input("\nNúmero de interfaz: ").strip()
+            if not choice.isdigit():
+                print("❌ Ingresa un número válido")
+                continue
+
+            index = int(choice)
+            if 1 <= index <= len(interfaces):
+                selected = interfaces[index - 1]
+                print(f"✅ Interfaz seleccionada: {selected}")
+                return selected
+
+            print(f"❌ Elige un valor entre 1 y {len(interfaces)}")
+
+    def ask_target_ip(self):
+        """Solicitar IP objetivo al usuario"""
+        while True:
+            target = input("\n🎯 Ingresa la IP objetivo: ").strip()
+            if not target:
+                print("❌ La IP objetivo no puede estar vacía")
+                continue
+            try:
+                socket.inet_aton(target)
+                return target
+            except OSError:
+                print("❌ IP no válida. Ejemplo: 8.8.8.8")
+
+    def interactive_mode_menu(self):
+        """Menú principal para seleccionar tipo de ejecución"""
+        print("\n📋 MENÚ PRINCIPAL")
+        print("   1. Modo clásico (múltiples interfaces)")
+        print("   2. Modo ciclos (1 interfaz por ciclo)")
+
+        while True:
+            selected_mode = input("\nSelecciona modo (1/2): ").strip()
+            if selected_mode in ("1", "2"):
+                return "classic" if selected_mode == "1" else "cycles"
+            print("❌ Opción inválida, usa 1 o 2")
     
     def create_virtual_interface(self, interface_name="veth_pen"):
         """Crear interfaz virtual usando veth pair y conectarla a la red del anfitrión"""
@@ -46,8 +119,10 @@ class VirtualNetworkTool:
             
             # --- INICIO DE LA LÓGICA PARA CONECTAR A LA RED DEL ANFITRIÓN ---
             # Determinar la interfaz de red principal del anfitrión
-            # Puedes necesitar ajustar 'eth0' a tu interfaz principal (ej. 'wlan0', 'enpXsY')
-            host_main_interface = "wlx1c61b415e0fb" 
+            host_main_interface = self.host_main_interface
+            if not host_main_interface:
+                print("❌ No se definió la interfaz de red principal")
+                return None
             
             # Intentar obtener la IP de la interfaz principal del anfitrión
             host_ip_cmd = f"ip -4 addr show {host_main_interface} | grep -oP '(?<=inet\\s)\\d+(\\.\\d+){{3}}'"
@@ -631,7 +706,11 @@ def main():
     parser.add_argument('--cycles', type=int, 
                         help='Número de ciclos a ejecutar (cada uno con interfaz diferente)')
     parser.add_argument('--interactive', action='store_true',
-                        help='Modo interactivo para especificar ciclos')
+                        help='Modo interactivo con menú completo')
+    parser.add_argument('--mode', choices=['classic', 'cycles'],
+                        help='Seleccionar modo sin menú (classic o cycles)')
+    parser.add_argument('--host-interface',
+                        help='Interfaz de red principal del host (ej. wlan0, eth0)')
     
     args = parser.parse_args()
     
@@ -642,56 +721,67 @@ def main():
         print("=" * 50)
         
         tool.check_privileges()
-        
-        # Modo ciclos múltiples
-        if args.cycles or args.interactive:
-            cycles = args.cycles
-            
-            # Modo interactivo
-            if args.interactive and not cycles: # Solo entra en interactivo si se especifica y no se dieron ciclos por CLI
-                print("\n🔄 MODO CICLOS MÚLTIPLES")
-                print("Cada ciclo creará una interfaz de red diferente")
-                
+
+        run_mode = args.mode
+
+        if args.interactive or not run_mode:
+            run_mode = tool.interactive_mode_menu()
+
+            selected_iface = tool.pick_host_interface()
+            if not selected_iface:
+                print("❌ No fue posible seleccionar interfaz de red")
+                return
+            tool.host_main_interface = selected_iface
+
+            selected_target = tool.ask_target_ip()
+            args.targets = [selected_target]
+
+            while True:
+                try:
+                    args.count = int(input("\n📶 Pings por objetivo (1-10): ").strip())
+                    if 1 <= args.count <= 10:
+                        break
+                    print("❌ Debe estar entre 1 y 10")
+                except ValueError:
+                    print("❌ Ingresa un número válido")
+
+            if run_mode == 'classic':
                 while True:
                     try:
-                        cycles = int(input("\n¿Cuántos ciclos quieres ejecutar? (1-50): "))
-                        if 1 <= cycles <= 50:
+                        args.interfaces = int(input("\n🔗 Número de interfaces virtuales (1-10): ").strip())
+                        if 1 <= args.interfaces <= 10:
                             break
-                        else:
-                            print("❌ Por favor ingresa un número entre 1 y 50")
+                        print("❌ Debe estar entre 1 y 10")
                     except ValueError:
-                        print("❌ Por favor ingresa un número válido")
-                
-                # Preguntar si quiere modificar otros parámetros
-                modify = input(f"\n¿Modificar objetivos actuales ({', '.join(args.targets)})? (y/n): ").lower()
-                if modify == 'y':
-                    targets_input = input("Ingresa objetivos separados por espacios: ").strip()
-                    if targets_input:
-                        args.targets = targets_input.split()
-                
-                modify_pings = input(f"\n¿Modificar pings por objetivo (actual: {args.count})? (y/n): ").lower()
-                if modify_pings == 'y':
+                        print("❌ Ingresa un número válido")
+            else:
+                while True:
                     try:
-                        new_count = int(input("Número de pings por objetivo (1-10): "))
-                        if 1 <= new_count <= 10:
-                            args.count = new_count
+                        args.cycles = int(input("\n🔄 Número de ciclos (1-50): ").strip())
+                        if 1 <= args.cycles <= 50:
+                            break
+                        print("❌ Debe estar entre 1 y 50")
                     except ValueError:
-                        pass
-                
-                print(f"\n✅ Configuración:")
-                print(f"   Ciclos: {cycles}")
-                print(f"   Objetivos: {', '.join(args.targets)}")
-                print(f"   Pings por objetivo: {args.count}")
-                
-                confirm = input("\n¿Continuar? (y/n): ").lower()
-                if confirm != 'y':
-                    print("❌ Cancelado por el usuario")
-                    return
-            elif not cycles: # Si no se especifica --cycles ni --interactive, se asume 1 ciclo por defecto
-                cycles = 1
-                print(f"\n🔄 MODO CICLOS MÚLTIPLES (1 ciclo por defecto)")
-                print(f"   Objetivos: {', '.join(args.targets)}")
-                print(f"   Pings por objetivo: {args.count}")
+                        print("❌ Ingresa un número válido")
+        else:
+            tool.host_main_interface = args.host_interface
+            if not tool.host_main_interface:
+                print("❌ Debes indicar la interfaz con --host-interface cuando uses --mode")
+                return
+
+        print("\n✅ Configuración seleccionada:")
+        print(f"   Modo: {'Clásico' if run_mode == 'classic' else 'Ciclos'}")
+        print(f"   Interfaz host: {tool.host_main_interface}")
+        print(f"   Objetivo: {', '.join(args.targets)}")
+        print(f"   Pings por objetivo: {args.count}")
+        if run_mode == 'classic':
+            print(f"   Interfaces virtuales: {args.interfaces}")
+        else:
+            print(f"   Ciclos: {args.cycles}")
+        
+        # Modo ciclos múltiples
+        if run_mode == 'cycles':
+            cycles = args.cycles if args.cycles else 1
 
             # Ejecutar ciclos múltiples
             print(f"\n🚀 Iniciando {cycles} ciclos de ejecución...")
